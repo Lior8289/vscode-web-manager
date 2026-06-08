@@ -58,4 +58,6 @@ class DockerGateway:
 
         def remove_container(self, container: Container) -> None:
             container.remove(force=True)
+
+            
         
