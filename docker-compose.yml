@@ -1,0 +1,11 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: vscode-manager-backend
+    networks:
+      - manager-net
+
+networks:
+  manager-net:
+    name: vscode-manager-net
