@@ -3,6 +3,14 @@ services:
     build:
       context: ./backend
     container_name: vscode-manager-backend
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOST_WORKSPACES_ROOT}:${HOST_WORKSPACES_ROOT}
+    environment:
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
+      - ENV_NETWORK=${ENV_NETWORK}
+      - HOST_WORKSPACES_ROOT=${HOST_WORKSPACES_ROOT}
+      - OPENVSCODE_IMAGE=${OPENVSCODE_IMAGE}
     networks:
       - manager-net
 
@@ -20,4 +28,4 @@ services:
 
 networks:
   manager-net:
-    name: vscode-manager-net
+    name: ${ENV_NETWORK:-vscode-manager-net}
