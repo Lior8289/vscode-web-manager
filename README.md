@@ -1,1 +1,2 @@
-# vscode-web-manager
+VS Code Web Enviroment Manager,
+Cymotive Home Assignment
