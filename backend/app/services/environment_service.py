@@ -94,6 +94,62 @@ class EnvironmentService:
             "status": container.status,
         }
     
+    def stop_all_environments(self) -> dict:
+        stopped_environments = []
+        failed_environments = []
+
+        for container in self.docker.list_managed_containers():
+            container.reload()
+            labels = container.labels
+            env_id = labels.get("env-id", "unknown")
+
+            if container.status != "running":
+                stopped_environments.append(
+                    {
+                        "id": env_id,
+                        "container_name": container.name,
+                        "previous_status": container.status,
+                        "status": container.status,
+                        "skipped": True,
+                    }
+                )
+                continue
+
+            try:
+                self.docker.stop_container(container)
+                container.reload()
+
+                stopped_environments.append(
+                    {
+                        "id": env_id,
+                        "container_name": container.name,
+                        "previous_status": "running",
+                        "status": container.status,
+                        "skipped": False,
+                    }
+                )
+
+            except Exception as exc:
+                failed_environments.append(
+                    {
+                        "id": env_id,
+                        "container_name": container.name,
+                        "error": str(exc),
+                    }
+                )
+
+        return {
+            "stopped_count": len(
+                [environment for environment in stopped_environments if not environment["skipped"]]
+            ),
+            "skipped_count": len(
+                [environment for environment in stopped_environments if environment["skipped"]]
+            ),
+            "failed_count": len(failed_environments),
+            "environments": stopped_environments,
+            "failures": failed_environments,
+        }
+    
     def remove_environment(self, env_id: str) -> dict:
         container = self._get_environment_container(env_id)
         self.docker.remove_container(container)

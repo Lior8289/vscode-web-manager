@@ -43,6 +43,11 @@ def stop_environment(env_id: str) -> dict:
     except EnvironmentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     
+@router.post("/stop-all")
+def stop_all_environments() -> dict:
+    service = get_environment_service()
+    return service.stop_all_environments()
+
 @router.delete("/{env_id}")
 def remove_environment(env_id: str) -> dict:
     service = get_environment_service()
