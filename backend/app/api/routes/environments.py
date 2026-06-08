@@ -17,7 +17,7 @@ def create_environment(request: CreateEnvironmentRequest) -> dict:
         return service.create_environment(request.mount_folder)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exd:
+    except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     
 @router.get("")

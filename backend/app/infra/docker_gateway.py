@@ -53,6 +53,9 @@ class DockerGateway:
         container.reload()
         return container.attrs
     
+    def start_container(self, container: Container) -> None:
+        container.start()
+    
     def stop_container(self, container: Container) -> None:
         container.stop()
 
