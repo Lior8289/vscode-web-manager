@@ -1,6 +1,6 @@
 import uuid 
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from docker.errors import NotFound
 
@@ -126,10 +126,19 @@ class EnvironmentService:
 
         if parsed_url.hostname is None:
             raise ValueError("PUBLIC_BASE_URL must include a valid hostname")
-        
+
         host = f"{container_name}.{parsed_url.hostname}"
 
+        netloc = host
         if parsed_url.port is not None:
-            host = f"{host}:{parsed_url.port}"
+            netloc = f"{host}:{parsed_url.port}"
 
-        return urlunsplit((parsed_url.scheme, host, "", "", ""))
+        query = urlencode({"folder": "/home/workspace"})
+
+        return urlunsplit((
+            parsed_url.scheme,
+            netloc,
+            "/",
+            query,
+            "",
+        ))
