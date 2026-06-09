@@ -1,8 +1,8 @@
 # VS Code Web Environment Manager
 
-[![backend image](https://img.shields.io/docker/v/lior8289/vscode-web-manager-backend?label=backend&logo=docker&sort=date)](https://hub.docker.com/r/lior8289/vscode-web-manager-backend)
-[![frontend image](https://img.shields.io/docker/v/lior8289/vscode-web-manager-frontend?label=frontend&logo=docker&sort=date)](https://hub.docker.com/r/lior8289/vscode-web-manager-frontend)
-[![CI](https://github.com/Lior8289/vscode-web-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/Lior8289/vscode-web-manager/actions/workflows/ci.yml)
+![backend](https://img.shields.io/docker/v/lior8289/vscode-web-manager-backend?label=backend&logo=docker)
+![frontend](https://img.shields.io/docker/v/lior8289/vscode-web-manager-frontend?label=frontend&logo=docker)
+![CI](https://github.com/lior8289/vscode-web-manager/actions/workflows/ci.yml/badge.svg)
 
 A small local service that spins up browser-accessible [OpenVSCode Server](https://github.com/gitpod-io/openvscode-server) environments on demand and exposes management endpoints for the containers, networks, and volumes it owns. FastAPI talks to the host Docker daemon over its socket; nginx is the public entry point and routes each environment to its own subdomain.
 
@@ -303,14 +303,14 @@ http://localhost:8080
 
 ### Stack
 
-| Layer            | Choice                                                |
-| ---------------- | ----------------------------------------------------- |
-| Build            | Vite 8 + TypeScript 6                                 |
-| UI primitives    | Radix UI (Dialog), hand-built `Button`, `Sheet`, etc. |
-| Styling          | Tailwind CSS 4 (`@theme` tokens, no config file)      |
-| Server state     | TanStack Query 5 (3s polling on list, 10s on health)  |
-| Forms            | react-hook-form + zod (validation mirrors the backend regex) |
-| Toasts           | sonner — distinguishes `created` vs `reused`          |
+| Layer         | Choice                                                       |
+| ------------- | ------------------------------------------------------------ |
+| Build         | Vite 8 + TypeScript 6                                        |
+| UI primitives | Radix UI (Dialog), hand-built `Button`, `Sheet`, etc.        |
+| Styling       | Tailwind CSS 4 (`@theme` tokens, no config file)             |
+| Server state  | TanStack Query 5 (3s polling on list, 10s on health)         |
+| Forms         | react-hook-form + zod (validation mirrors the backend regex) |
+| Toasts        | sonner — distinguishes `created` vs `reused`                 |
 
 ### Run in dev (hot reload, no Docker)
 
@@ -338,11 +338,11 @@ The existing `nginx` service in `docker-compose.yml` builds from `frontend/Docke
 
 ### Keyboard shortcuts
 
-| Key   | Action                          |
-| ----- | ------------------------------- |
-| `N`   | Open the "Provision" dialog     |
-| `R`   | Refresh environments + health   |
-| `Esc` | Dismiss any dialog or sheet     |
+| Key   | Action                        |
+| ----- | ----------------------------- |
+| `N`   | Open the "Provision" dialog   |
+| `R`   | Refresh environments + health |
+| `Esc` | Dismiss any dialog or sheet   |
 
 ## Testing
 
@@ -360,10 +360,13 @@ Service tests use a handwritten `FakeDockerGateway` (`tests/test_environment_ser
 
 - **`backend-checks`** — installs Python deps, `ruff check`, `pytest`, builds the backend Docker image, validates `docker compose config`.
 - **`frontend-checks`** — installs npm deps, `eslint`, `tsc -b --noEmit`, `vite build`, builds the frontend Docker image (`frontend/Dockerfile`).
-- **`publish-images`** — runs only after both check jobs pass *and only on push to `main`*. Logs in to Docker Hub, builds both images for `linux/amd64` + `linux/arm64` using buildx + QEMU, pushes them as `lior8289/vscode-web-manager-{backend,frontend}:latest` plus a `sha-<short>` tag for traceability. Cached via `type=gha` so warm builds finish in ~90s. Never runs on PRs (no secret exposure, no risk of publishing unverified code).
+- **`publish-images`** — runs only after both check jobs pass _and only on push to `main`_. Logs in to Docker Hub, builds both images for `linux/amd64` + `linux/arm64` using buildx + QEMU, pushes them as `lior8289/vscode-web-manager-{backend,frontend}:latest` plus a `sha-<short>` tag for traceability. Cached via `type=gha` so warm builds finish in ~90s. Never runs on PRs (no secret exposure, no risk of publishing unverified code).
 
 ## AI usage note
 
-AI tools were used to review the project structure, Docker/Nginx configuration, test strategy, CI workflow, and README wording.
+AI tools were used at multiple stages of this project. All generated output was reviewed, adjusted, tested locally, and validated through GitHub Actions before being included:
 
-All generated suggestions were reviewed, adjusted, tested locally, and validated through GitHub Actions before being included.
+- **Project planning** — early architecture exploration, stack decisions, and the FastAPI ↔ `DockerGateway` ↔ nginx layering (single-responsibility split, where domain exceptions become HTTP status codes, where the Docker SDK lives).
+- **Configuration and complex files** — `nginx/nginx.conf` (the subdomain-regex virtual host with Docker embedded-DNS resolution), `docker-compose.yml` and `docker-compose.hub.yml` (host-path passthrough mount, env-var defaults, reviewer zero-config flow), the backend and frontend `Dockerfile`s (slim Python image, multi-stage Vite + nginx build), and `.github/workflows/ci.yml` (parallel check jobs + multi-arch Docker Hub publish via buildx, QEMU, and GHA layer cache).
+- **Test writing** — the `FakeDockerGateway` / `FakeContainer` pattern in `tests/test_environment_service.py` for hermetic service-layer tests, and the `app.dependency_overrides` route tests in `tests/test_environments_routes.py` that verify status-code mapping without a real Docker daemon.
+- **Afterward polish and code scans** — README wording and structure, error-mapping consistency between the route layer and service exceptions, and a security review of `mount_folder` validation (the Pydantic regex plus the resolved-path defense in depth).
