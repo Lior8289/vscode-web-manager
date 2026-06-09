@@ -846,7 +846,7 @@ docker compose exec nginx getent hosts vscode-env-abc123def456
 
 ### Env URL loads but WebSocket features don't work (terminal, file watcher)
 
-WebSocket upgrade is failing. Check that nginx has `proxy_http_version 1.1` and the Upgrade/Connection headers (in `nginx/nginx.conf`). Also try:
+WebSocket upgrade is failing. Check that nginx has `proxy_http_version 1.1` and the Upgrade/Connection headers (in `frontend/nginx.conf`, baked into the frontend image). Also try:
 
 ```bash
 # From the host, hit the env container directly through the network

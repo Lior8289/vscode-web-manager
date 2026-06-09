@@ -49,7 +49,7 @@ docker compose -f docker-compose.hub.yml up
 Three runtime pieces wired together on a single Docker network (`manager-net`, name from `ENV_NETWORK`):
 
 1. **Backend** (`backend/app/`) — FastAPI app exposing `/health`, `/docker/info`, and `/environments/*`. It talks to the host's Docker daemon via the mounted socket and creates/lists/stops/removes per-environment containers.
-2. **nginx** (`nginx/nginx.conf`) — Two virtual hosts on port 80:
+2. **nginx** (`frontend/nginx.conf`, baked into the frontend image) — Two virtual hosts on port 80:
    - `localhost` → proxies `/api/` to the backend and `/health` directly.
    - Regex host `~^(?<vscode_container>vscode-env-[a-f0-9]{12})\.localhost$` → captures the container name from the subdomain and proxies to `http://$vscode_container:3000` with WebSocket upgrade. Relies on Docker's embedded DNS (`resolver 127.0.0.11`) to resolve the captured name.
 3. **openvscode-server containers** — Launched by the backend with labels `managed-by=vscode-web-env-manager`, `env-id=<hex>`, `mount-folder=<name>`. Named `vscode-env-<12-hex>` so nginx's regex matches them.
@@ -114,4 +114,4 @@ The first two jobs must stay green on every PR. `publish-images` only runs on `m
 
 ## Reviewer flow (Docker Hub)
 
-`docker-compose.hub.yml` is the zero-build entry point for reviewers. Same topology as `docker-compose.yml` but uses `image:` not `build:` and provides defaults for every env var except `HOST_WORKSPACES_ROOT` (no safe default for a host bind-mount path). It still bind-mounts `./nginx/nginx.conf` so the routing config stays in lockstep with the repo's source — keep both compose files updated if you change nginx config layout.
+`docker-compose.hub.yml` is the zero-build entry point for reviewers. Same topology as `docker-compose.yml` but uses `image:` not `build:` and defaults every env var (including `HOST_WORKSPACES_ROOT=/tmp/vscode-web-manager-workspaces`, which Docker auto-creates on first bind-mount). The nginx config is baked into the frontend image (`frontend/nginx.conf` is `COPY`-ed in the runtime stage), so neither compose file bind-mounts it — the image is self-sufficient. If you change nginx routing, just rebuild the frontend image (CI does this automatically on push to `main`).

@@ -328,7 +328,7 @@ npm run build       # tsc -b && vite build → dist/
 
 ### How it ships in Docker
 
-The existing `nginx` service in `docker-compose.yml` builds from `frontend/Dockerfile` — a multi-stage build that compiles the React app in `node:20-alpine`, then copies the `dist/` into `nginx:1.27-alpine`. The nginx config (`nginx/nginx.conf`) gained one `location /` block to serve the static assets with an SPA fallback to `index.html`; the existing `/api/`, `/health`, and the subdomain-regex routing are unchanged. There is no separate frontend container.
+The existing `nginx` service in `docker-compose.yml` builds from `frontend/Dockerfile` — a multi-stage build that compiles the React app in `node:20-alpine`, then copies the `dist/` into `nginx:1.27-alpine` along with `frontend/nginx.conf`. The nginx config gained one `location /` block to serve the static assets with an SPA fallback to `index.html`; the existing `/api/`, `/health`, and the subdomain-regex routing are unchanged. There is no separate frontend container, and the config is baked into the image (no compose-time bind mount), so `docker-compose.hub.yml` is a true image-only entry point — reviewers don't need the nginx config on disk.
 
 ### Keyboard shortcuts
 
@@ -343,7 +343,7 @@ The existing `nginx` service in `docker-compose.yml` builds from `frontend/Docke
 ```bash
 cd backend
 python -m ruff check .   # lint
-python -m pytest -v      # 34 tests; service layer + route layer + schemas + health
+python -m pytest -v      # 36 tests; service layer + route layer + schemas + health
 ```
 
 Service tests use a handwritten `FakeDockerGateway` (`tests/test_environment_service.py`) — no Docker daemon needed. Route tests use `app.dependency_overrides` to inject a fake service (`tests/test_environments_routes.py`), so status-code mapping is verified without touching real containers.
@@ -361,6 +361,6 @@ Service tests use a handwritten `FakeDockerGateway` (`tests/test_environment_ser
 AI tools were used at multiple stages of this project. All generated output was reviewed, adjusted, tested locally, and validated through GitHub Actions before being included:
 
 - **Project planning** — early architecture exploration, stack decisions, and the FastAPI ↔ `DockerGateway` ↔ nginx layering (single-responsibility split, where domain exceptions become HTTP status codes, where the Docker SDK lives).
-- **Configuration and complex files** — `nginx/nginx.conf` (the subdomain-regex virtual host with Docker embedded-DNS resolution), `docker-compose.yml` and `docker-compose.hub.yml` (host-path passthrough mount, env-var defaults, reviewer zero-config flow), the backend and frontend `Dockerfile`s (slim Python image, multi-stage Vite + nginx build), and `.github/workflows/ci.yml` (parallel check jobs + multi-arch Docker Hub publish via buildx, QEMU, and GHA layer cache).
+- **Configuration and complex files** — `frontend/nginx.conf` (the subdomain-regex virtual host with Docker embedded-DNS resolution, baked into the frontend image), `docker-compose.yml` and `docker-compose.hub.yml` (host-path passthrough mount, env-var defaults, reviewer zero-config flow), the backend and frontend `Dockerfile`s (slim Python image, multi-stage Vite + nginx build), and `.github/workflows/ci.yml` (parallel check jobs + multi-arch Docker Hub publish via buildx, QEMU, and GHA layer cache).
 - **Test writing** — the `FakeDockerGateway` / `FakeContainer` pattern in `tests/test_environment_service.py` for hermetic service-layer tests, and the `app.dependency_overrides` route tests in `tests/test_environments_routes.py` that verify status-code mapping without a real Docker daemon.
 - **Afterward polish and code scans** — README wording and structure, error-mapping consistency between the route layer and service exceptions, and a security review of `mount_folder` validation (the Pydantic regex plus the resolved-path defense in depth).
