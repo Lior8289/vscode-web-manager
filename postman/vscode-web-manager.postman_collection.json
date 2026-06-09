@@ -1,0 +1,438 @@
+{
+  "info": {
+    "_postman_id": "7c7e2ce8-e7c3-4ed3-9874-8bfa9f4b2f0f",
+    "name": "VS Code Web Environment Manager",
+    "description": "Postman checks for the FastAPI endpoints exposed through nginx at http://localhost:8080/api.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api"
+    },
+    {
+      "key": "mount_folder",
+      "value": "postman-demo"
+    },
+    {
+      "key": "env_id",
+      "value": ""
+    },
+    {
+      "key": "missing_env_id",
+      "value": "missing00000"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/health"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', () => pm.response.to.have.status(200));",
+              "pm.test('body is healthy', () => {",
+              "  pm.expect(pm.response.json()).to.eql({ status: 'ok' });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Docker Info",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/docker/info"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', () => pm.response.to.have.status(200));",
+              "pm.test('docker is connected', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.docker).to.eql('connected');",
+              "  pm.expect(body).to.have.property('server_version');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 List Environments",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/environments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', () => pm.response.to.have.status(200));",
+              "pm.test('body is an array', () => {",
+              "  pm.expect(pm.response.json()).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Create Environment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mount_folder\": \"{{mount_folder}}\"\n}"
+        },
+        "url": "{{baseUrl}}/environments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 201', () => pm.response.to.have.status(201));",
+              "pm.test('created environment shape is valid', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.id).to.match(/^[a-f0-9]{12}$/);",
+              "  pm.expect(body.container_name).to.eql(`vscode-env-${body.id}`);",
+              "  pm.expect(body.status).to.be.oneOf(['created', 'running']);",
+              "  pm.expect(body.url).to.include(`vscode-env-${body.id}.localhost:8080`);",
+              "  pm.expect(body.workspace_path).to.include(pm.collectionVariables.get('mount_folder'));",
+              "  pm.expect(body.reused).to.be.a('boolean');",
+              "  pm.collectionVariables.set('env_id', body.id);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Get Environment Detail",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/environments/{{env_id}}"
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('env_id is set', () => {",
+              "  pm.expect(pm.collectionVariables.get('env_id')).to.not.eql('');",
+              "});"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', () => pm.response.to.have.status(200));",
+              "pm.test('detail body is valid', () => {",
+              "  const body = pm.response.json();",
+              "  const envId = pm.collectionVariables.get('env_id');",
+              "  pm.expect(body.id).to.eql(envId);",
+              "  pm.expect(body.container_name).to.eql(`vscode-env-${envId}`);",
+              "  pm.expect(body).to.have.property('image');",
+              "  pm.expect(body).to.have.property('labels');",
+              "  pm.expect(body).to.have.property('mounts');",
+              "  pm.expect(body).to.have.property('networks');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Create Same Folder Reuses Environment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mount_folder\": \"{{mount_folder}}\"\n}"
+        },
+        "url": "{{baseUrl}}/environments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 201', () => pm.response.to.have.status(201));",
+              "pm.test('same folder is reused', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.id).to.eql(pm.collectionVariables.get('env_id'));",
+              "  pm.expect(body.reused).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Stop Environment",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/environments/{{env_id}}/stop"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', () => pm.response.to.have.status(200));",
+              "pm.test('environment stopped', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.id).to.eql(pm.collectionVariables.get('env_id'));",
+              "  pm.expect(body.status).to.eql('exited');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Create Same Folder Restarts Environment",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mount_folder\": \"{{mount_folder}}\"\n}"
+        },
+        "url": "{{baseUrl}}/environments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 201', () => pm.response.to.have.status(201));",
+              "pm.test('stopped environment is restarted and reused', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.id).to.eql(pm.collectionVariables.get('env_id'));",
+              "  pm.expect(body.status).to.eql('running');",
+              "  pm.expect(body.reused).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Stop All Environments",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/environments/stop-all"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', () => pm.response.to.have.status(200));",
+              "pm.test('stop-all body is valid', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body).to.have.property('stopped_count');",
+              "  pm.expect(body).to.have.property('skipped_count');",
+              "  pm.expect(body).to.have.property('failed_count');",
+              "  pm.expect(body.environments).to.be.an('array');",
+              "  pm.expect(body.failures).to.be.an('array');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 Delete Environment",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": "{{baseUrl}}/environments/{{env_id}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', () => pm.response.to.have.status(200));",
+              "pm.test('environment removed', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.id).to.eql(pm.collectionVariables.get('env_id'));",
+              "  pm.expect(body.removed).to.eql(true);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 List After Delete",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/environments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', () => pm.response.to.have.status(200));",
+              "pm.test('deleted env is no longer listed', () => {",
+              "  const envId = pm.collectionVariables.get('env_id');",
+              "  const body = pm.response.json();",
+              "  pm.expect(body).to.be.an('array');",
+              "  pm.expect(body.map((environment) => environment.id)).to.not.include(envId);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 Create Environment Invalid Mount Folder",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mount_folder\": \"../etc\"\n}"
+        },
+        "url": "{{baseUrl}}/environments"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 422', () => pm.response.to.have.status(422));",
+              "pm.test('body contains validation detail', () => {",
+              "  pm.expect(pm.response.json()).to.have.property('detail');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 Get Missing Environment",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/environments/{{missing_env_id}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 404', () => pm.response.to.have.status(404));",
+              "pm.test('body contains not-found detail', () => {",
+              "  pm.expect(pm.response.json().detail).to.eql('Environment not found');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 Stop Missing Environment",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/environments/{{missing_env_id}}/stop"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 404', () => pm.response.to.have.status(404));",
+              "pm.test('body contains not-found detail', () => {",
+              "  pm.expect(pm.response.json().detail).to.eql('Environment not found');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 Delete Missing Environment",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": "{{baseUrl}}/environments/{{missing_env_id}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 404', () => pm.response.to.have.status(404));",
+              "pm.test('body contains not-found detail', () => {",
+              "  pm.expect(pm.response.json().detail).to.eql('Environment not found');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

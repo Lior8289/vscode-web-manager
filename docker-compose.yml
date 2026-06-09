@@ -16,7 +16,7 @@ services:
       - manager-net
 
   nginx:
-    image: nginx:1.27-alpine
+    build: ./frontend
     container_name: vscode-manager-nginx
     restart: unless-stopped
     ports:

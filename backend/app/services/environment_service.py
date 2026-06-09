@@ -1,4 +1,9 @@
+import socket
+import time
+import urllib.error
+import urllib.request
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
@@ -10,14 +15,45 @@ from app.infra.docker_gateway import DockerGateway
 
 MANAGED_BY_LABEL = "vscode-web-env-manager"
 
+READINESS_TIMEOUT_SECONDS = 10.0
+READINESS_POLL_INTERVAL_SECONDS = 0.25
+
 
 class EnvironmentNotFoundError(Exception):
     pass
 
 
+def _wait_for_openvscode_ready(container_name: str) -> None:
+    """Block until openvscode-server inside `container_name` answers on :3000.
+
+    Why: Docker reports the container as "running" the instant the init
+    process starts — but openvscode-server takes another ~1-2s to bind the
+    port. Returning before that causes nginx to 502 on the first request,
+    which is exactly what users hit when we auto-open the editor right
+    after the start endpoint resolves.
+    """
+    deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
+    probe_url = f"http://{container_name}:3000/"
+    while time.monotonic() < deadline:
+        try:
+            urllib.request.urlopen(probe_url, timeout=1.0).close()  # noqa: S310
+            return
+        except urllib.error.HTTPError:
+            return  # any HTTP response means the server is listening
+        except (urllib.error.URLError, TimeoutError, socket.timeout, OSError):
+            pass
+        time.sleep(READINESS_POLL_INTERVAL_SECONDS)
+
+
 class EnvironmentService:
-    def __init__(self, docker_gateway: DockerGateway) -> None:
+    def __init__(
+        self,
+        docker_gateway: DockerGateway,
+        *,
+        wait_for_ready: Callable[[str], None] | None = None,
+    ) -> None:
         self.docker = docker_gateway
+        self._wait_for_ready = wait_for_ready or _wait_for_openvscode_ready
 
     def create_environment(self, mount_folder: str) -> dict:
         existing_container = self._find_existing_environment_by_mount_folder(mount_folder)
@@ -197,14 +233,19 @@ class EnvironmentService:
 
     def _try_reuse_existing_environment(self, container: Container) -> dict | None:
         container.reload()
+        just_started = False
 
         if container.status != "running":
             try:
                 self.docker.start_container(container)
                 container.reload()
+                just_started = True
             except Exception:
                 self.docker.remove_container(container)
                 return None
+
+        if just_started:
+            self._wait_for_ready(container.name)
 
         labels = container.labels
         mount_folder = labels.get("mount-folder", "unknown")

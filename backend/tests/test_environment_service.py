@@ -125,7 +125,7 @@ def gateway() -> FakeDockerGateway:
 
 @pytest.fixture
 def service(gateway: FakeDockerGateway, test_settings) -> EnvironmentService:
-    return EnvironmentService(gateway)
+    return EnvironmentService(gateway, wait_for_ready=lambda _: None)
 
 
 def test_create_environment_returns_expected_shape(service, gateway, tmp_path):

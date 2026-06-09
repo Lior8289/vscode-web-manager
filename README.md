@@ -48,6 +48,8 @@ Three runtime pieces wired on a single Docker network (`manager-net`, name from 
 2. **backend** — FastAPI app. Owns all container lifecycle through `DockerGateway` (the only place that imports the `docker` SDK). Talks to the daemon via the mounted `/var/run/docker.sock`.
 3. **per-env openvscode-server containers** — Created on demand with the labels `managed-by=vscode-web-env-manager`, `env-id=<hex>`, `mount-folder=<name>`. Named `vscode-env-<12-hex>` so the nginx regex matches.
 
+The same nginx container also serves a React dashboard at `http://localhost:8080/`. The dashboard, the `/api/*` routes, and the per-environment subdomains all share one origin (no CORS) and one port. See [Frontend](#frontend).
+
 ## Quickstart
 
 ```bash
@@ -255,6 +257,62 @@ uvicorn app.main:app --reload --port 8000
 
 Without nginx, the env-container subdomains won't resolve — useful only for hitting the API directly.
 
+## Frontend
+
+A React dashboard lives in `frontend/`. It's the same-origin SPA that talks to the backend through the `/api/` path and opens per-environment URLs in a new tab.
+
+```
+http://localhost:8080
+  ├── /          → React dashboard       (served by nginx)
+  ├── /api/*     → FastAPI backend       (proxied by nginx)
+  ├── /health    → FastAPI backend       (proxied by nginx)
+  └── vscode-env-<hex>.localhost:8080
+                 → per-env openvscode    (proxied by nginx via subdomain regex)
+```
+
+### Stack
+
+| Layer            | Choice                                                |
+| ---------------- | ----------------------------------------------------- |
+| Build            | Vite 8 + TypeScript 6                                 |
+| UI primitives    | Radix UI (Dialog), hand-built `Button`, `Sheet`, etc. |
+| Styling          | Tailwind CSS 4 (`@theme` tokens, no config file)      |
+| Server state     | TanStack Query 5 (3s polling on list, 10s on health)  |
+| Forms            | react-hook-form + zod (validation mirrors the backend regex) |
+| Toasts           | sonner — distinguishes `created` vs `reused`          |
+
+### Run in dev (hot reload, no Docker)
+
+```bash
+# Terminal 1 — backend
+cd backend && uvicorn app.main:app --reload --port 8000
+
+# Terminal 2 — frontend (Vite proxies /api → :8000)
+cd frontend && npm install && npm run dev
+# Dashboard at http://localhost:5173
+```
+
+### Build, lint, typecheck
+
+```bash
+cd frontend
+npm run lint        # eslint
+npm run typecheck   # tsc -b --noEmit
+npm run build       # tsc -b && vite build → dist/
+```
+
+### How it ships in Docker
+
+The existing `nginx` service in `docker-compose.yml` builds from `frontend/Dockerfile` — a multi-stage build that compiles the React app in `node:20-alpine`, then copies the `dist/` into `nginx:1.27-alpine`. The nginx config (`nginx/nginx.conf`) gained one `location /` block to serve the static assets with an SPA fallback to `index.html`; the existing `/api/`, `/health`, and the subdomain-regex routing are unchanged. There is no separate frontend container.
+
+### Keyboard shortcuts
+
+| Key   | Action                          |
+| ----- | ------------------------------- |
+| `N`   | Open the "Provision" dialog     |
+| `R`   | Refresh environments + health   |
+| `Esc` | Dismiss any dialog or sheet     |
+
 ## Testing
 
 ```bash
@@ -267,7 +325,10 @@ Service tests use a handwritten `FakeDockerGateway` (`tests/test_environment_ser
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push and PR: installs deps, runs `ruff check`, runs `pytest`, builds the backend Docker image, and validates `docker compose config`.
+`.github/workflows/ci.yml` runs on every push and PR. Two parallel jobs:
+
+- **`backend-checks`** — installs Python deps, `ruff check`, `pytest`, builds the backend Docker image, validates `docker compose config`.
+- **`frontend-checks`** — installs npm deps, `eslint`, `tsc -b --noEmit`, `vite build`, builds the frontend Docker image (`frontend/Dockerfile`).
 
 ## AI usage note
 
