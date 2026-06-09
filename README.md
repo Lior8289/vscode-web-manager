@@ -1,8 +1,14 @@
 # VS Code Web Environment Manager
 
+[![backend image](https://img.shields.io/docker/v/lior8289/vscode-web-manager-backend?label=backend&logo=docker&sort=date)](https://hub.docker.com/r/lior8289/vscode-web-manager-backend)
+[![frontend image](https://img.shields.io/docker/v/lior8289/vscode-web-manager-frontend?label=frontend&logo=docker&sort=date)](https://hub.docker.com/r/lior8289/vscode-web-manager-frontend)
+[![CI](https://github.com/Lior8289/vscode-web-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/Lior8289/vscode-web-manager/actions/workflows/ci.yml)
+
 A small local service that spins up browser-accessible [OpenVSCode Server](https://github.com/gitpod-io/openvscode-server) environments on demand and exposes management endpoints for the containers, networks, and volumes it owns. FastAPI talks to the host Docker daemon over its socket; nginx is the public entry point and routes each environment to its own subdomain.
 
 Submitted as the **Cymotive home assignment**.
+
+> **Reviewing this?** Skip the build — pre-built multi-arch images (amd64 + arm64) are published to Docker Hub on every push to `main`. Jump to [Reviewer quickstart (zero build)](#reviewer-quickstart-zero-build).
 
 ## Architecture
 
@@ -50,7 +56,27 @@ Three runtime pieces wired on a single Docker network (`manager-net`, name from 
 
 The same nginx container also serves a React dashboard at `http://localhost:8080/`. The dashboard, the `/api/*` routes, and the per-environment subdomains all share one origin (no CORS) and one port. See [Frontend](#frontend).
 
-## Quickstart
+## Reviewer quickstart (zero build)
+
+Three commands. No `npm`, no `pip`, no `--build`. Just Docker.
+
+```bash
+git clone https://github.com/Lior8289/vscode-web-manager.git
+cd vscode-web-manager
+HOST_WORKSPACES_ROOT="$PWD/workspaces" docker compose -f docker-compose.hub.yml up
+```
+
+That pulls `lior8289/vscode-web-manager-backend:latest` and `lior8289/vscode-web-manager-frontend:latest` from Docker Hub. Both are multi-arch — Docker auto-selects `arm64` on Apple Silicon or `amd64` on Intel.
+
+Then open <http://localhost:8080>, click **New environment**, give it a folder name (e.g. `demo`), and click the resulting URL to open VS Code in a new tab. Files saved in `/home/workspace` inside VS Code appear in `./workspaces/demo/` on the host.
+
+To stop: `Ctrl-C`, then `docker compose -f docker-compose.hub.yml down` to remove the containers.
+
+To fetch a fresh `latest` later: `docker compose -f docker-compose.hub.yml pull && docker compose -f docker-compose.hub.yml up`.
+
+## Quickstart (build from source)
+
+For development with code changes:
 
 ```bash
 cp .env.example .env
@@ -325,10 +351,11 @@ Service tests use a handwritten `FakeDockerGateway` (`tests/test_environment_ser
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push and PR. Two parallel jobs:
+`.github/workflows/ci.yml` runs on every push and PR. Three jobs:
 
 - **`backend-checks`** — installs Python deps, `ruff check`, `pytest`, builds the backend Docker image, validates `docker compose config`.
 - **`frontend-checks`** — installs npm deps, `eslint`, `tsc -b --noEmit`, `vite build`, builds the frontend Docker image (`frontend/Dockerfile`).
+- **`publish-images`** — runs only after both check jobs pass *and only on push to `main`*. Logs in to Docker Hub, builds both images for `linux/amd64` + `linux/arm64` using buildx + QEMU, pushes them as `lior8289/vscode-web-manager-{backend,frontend}:latest` plus a `sha-<short>` tag for traceability. Cached via `type=gha` so warm builds finish in ~90s. Never runs on PRs (no secret exposure, no risk of publishing unverified code).
 
 ## AI usage note
 

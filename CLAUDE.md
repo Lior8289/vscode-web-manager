@@ -36,6 +36,12 @@ docker compose up --build   # backend + nginx on http://localhost:8080
 docker compose config       # validate compose file (CI runs this)
 ```
 
+For reviewers who don't want to build (uses pre-built images from Docker Hub):
+
+```bash
+HOST_WORKSPACES_ROOT="$PWD/workspaces" docker compose -f docker-compose.hub.yml up
+```
+
 ## Architecture
 
 Three runtime pieces wired together on a single Docker network (`manager-net`, name from `ENV_NETWORK`):
@@ -96,4 +102,14 @@ Two layers, no real Docker daemon needed:
 
 ## CI
 
-`.github/workflows/ci.yml` runs on every push and PR: installs backend deps, `ruff check`, `pytest`, builds the backend Docker image, and validates `docker compose config` (with placeholder env vars in the job's `env:` block — the validation does not require a real `HOST_WORKSPACES_ROOT` to exist). Keep these four green.
+`.github/workflows/ci.yml` runs on every push and PR with three jobs:
+
+- **`backend-checks`** — installs backend deps, `ruff check`, `pytest`, builds the backend Docker image, validates `docker compose config` (with placeholder env vars in the job's `env:` block — the validation does not require a real `HOST_WORKSPACES_ROOT` to exist).
+- **`frontend-checks`** — `npm ci` (cached on `frontend/package-lock.json`), `npm run lint` (eslint), `npm run typecheck` (`tsc -b --noEmit`), `npm run build` (`tsc -b && vite build`), and `docker build ./frontend` to exercise the multi-stage Dockerfile.
+- **`publish-images`** — `needs: [backend-checks, frontend-checks]` and gated `if: github.event_name == 'push' && github.ref == 'refs/heads/main'`. Logs in to Docker Hub with `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` repo secrets, then uses `docker/build-push-action@v6` with `platforms: linux/amd64,linux/arm64` (multi-arch via QEMU) to publish `lior8289/vscode-web-manager-backend` and `lior8289/vscode-web-manager-frontend` tagged `latest` + `sha-<short>`. Cached with `type=gha,mode=max`, scoped per image. Never runs on PRs.
+
+The first two jobs must stay green on every PR. `publish-images` only runs on `main` and must stay green there.
+
+## Reviewer flow (Docker Hub)
+
+`docker-compose.hub.yml` is the zero-build entry point for reviewers. Same topology as `docker-compose.yml` but uses `image:` not `build:` and provides defaults for every env var except `HOST_WORKSPACES_ROOT` (no safe default for a host bind-mount path). It still bind-mounts `./nginx/nginx.conf` so the routing config stays in lockstep with the repo's source — keep both compose files updated if you change nginx config layout.

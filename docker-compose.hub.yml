@@ -1,0 +1,32 @@
+services:
+  backend:
+    image: docker.io/lior8289/vscode-web-manager-backend:latest
+    container_name: vscode-manager-backend
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${HOST_WORKSPACES_ROOT:?set HOST_WORKSPACES_ROOT to an absolute path, e.g. HOST_WORKSPACES_ROOT="$PWD/workspaces"}:${HOST_WORKSPACES_ROOT}
+    environment:
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:8080}
+      - ENV_NETWORK=${ENV_NETWORK:-vscode-manager-net}
+      - HOST_WORKSPACES_ROOT=${HOST_WORKSPACES_ROOT}
+      - OPENVSCODE_IMAGE=${OPENVSCODE_IMAGE:-gitpod/openvscode-server}
+    networks:
+      - manager-net
+
+  nginx:
+    image: docker.io/lior8289/vscode-web-manager-frontend:latest
+    container_name: vscode-manager-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+    networks:
+      - manager-net
+
+networks:
+  manager-net:
+    name: ${ENV_NETWORK:-vscode-manager-net}
