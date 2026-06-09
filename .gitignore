@@ -40,4 +40,6 @@ htmlcov/
 # Build / dist
 build/
 dist/
-*.egg-info/
+*.egg-info/\
+
+CLAUDE.md
