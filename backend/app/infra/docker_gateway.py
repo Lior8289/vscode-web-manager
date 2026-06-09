@@ -4,6 +4,7 @@ import docker
 from docker.errors import ImageNotFound
 from docker.models.containers import Container
 
+
 class DockerGateway:
     def __init__(self) -> None:
         self.client = docker.from_env()

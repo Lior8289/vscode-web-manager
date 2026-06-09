@@ -8,7 +8,6 @@ from docker.models.containers import Container
 from app.core.config import settings
 from app.infra.docker_gateway import DockerGateway
 
-
 MANAGED_BY_LABEL = "vscode-web-env-manager"
 
 
@@ -24,7 +23,10 @@ class EnvironmentService:
         existing_container = self._find_existing_environment_by_mount_folder(mount_folder)
 
         if existing_container is not None:
-            return self._reuse_existing_environment(existing_container)
+            reused_environment = self._try_reuse_existing_environment(existing_container)
+
+            if reused_environment is not None:
+                return reused_environment
 
         env_id = uuid.uuid4().hex[:12]
         container_name = self._container_name(env_id)
@@ -173,7 +175,10 @@ class EnvironmentService:
         matching_containers = []
 
         for container in self.docker.list_managed_containers():
-            container.reload()
+            try:
+                container.reload()
+            except NotFound:
+                continue
 
             if container.labels.get("mount-folder") == mount_folder:
                 matching_containers.append(container)
@@ -190,12 +195,16 @@ class EnvironmentService:
 
         return None
 
-    def _reuse_existing_environment(self, container: Container) -> dict:
+    def _try_reuse_existing_environment(self, container: Container) -> dict | None:
         container.reload()
 
         if container.status != "running":
-            self.docker.start_container(container)
-            container.reload()
+            try:
+                self.docker.start_container(container)
+                container.reload()
+            except Exception:
+                self.docker.remove_container(container)
+                return None
 
         labels = container.labels
         mount_folder = labels.get("mount-folder", "unknown")

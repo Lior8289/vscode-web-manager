@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8080"
     env_network: str = "vscode-manager-net"
