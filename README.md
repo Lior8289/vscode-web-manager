@@ -1,2 +1,276 @@
-VS Code Web Enviroment Manager,
-Cymotive Home Assignment
+# VS Code Web Environment Manager
+
+A small local service that spins up browser-accessible [OpenVSCode Server](https://github.com/gitpod-io/openvscode-server) environments on demand and exposes management endpoints for the containers, networks, and volumes it owns. FastAPI talks to the host Docker daemon over its socket; nginx is the public entry point and routes each environment to its own subdomain.
+
+Submitted as the **Cymotive home assignment**.
+
+## Architecture
+
+```
+                    ┌────────────────────────────────────────────┐
+                    │              host machine                  │
+                    │                                            │
+                    │   ┌──────────────┐    HOST_WORKSPACES_ROOT │
+   browser ──:8080──┼──▶│    nginx     │       (bind mount)      │
+                    │   └──────┬───────┘             ▲           │
+                    │          │                     │           │
+                    │     ┌────┴──────┐              │           │
+                    │     │           │              │           │
+                    │     ▼           ▼              │           │
+                    │   /api/    vscode-env-*        │           │
+                    │     │      .localhost          │           │
+                    │     ▼           │              │           │
+                    │  ┌──────────┐   │              │           │
+                    │  │ backend  │   │              │           │
+                    │  │ FastAPI  │   │              │           │
+                    │  └────┬─────┘   │              │           │
+                    │       │         │              │           │
+                    │       │ docker  │              │           │
+                    │       │ socket  │              │           │
+                    │       ▼         │              │           │
+                    │  ┌──────────┐   │              │           │
+                    │  │  Docker  │   │              │           │
+                    │  │  daemon  │   │              │           │
+                    │  └────┬─────┘   │              │           │
+                    │       │ creates │              │           │
+                    │       ▼         ▼              │           │
+                    │   ┌────────────────────┐       │           │
+                    │   │ vscode-env-<12hex> │───────┘           │
+                    │   │  (openvscode)      │  /home/workspace  │
+                    │   └────────────────────┘                   │
+                    │         on manager-net                     │
+                    └────────────────────────────────────────────┘
+```
+
+Three runtime pieces wired on a single Docker network (`manager-net`, name from `ENV_NETWORK`):
+
+1. **nginx** (port 8080) — two virtual hosts. `localhost` proxies `/api/` to the backend and `/health` directly. A regex host `~^(?<vscode_container>vscode-env-[a-f0-9]{12})\.localhost$` captures the container name from the subdomain and proxies to `http://$vscode_container:3000`, relying on Docker's embedded DNS (`resolver 127.0.0.11`) to resolve it.
+2. **backend** — FastAPI app. Owns all container lifecycle through `DockerGateway` (the only place that imports the `docker` SDK). Talks to the daemon via the mounted `/var/run/docker.sock`.
+3. **per-env openvscode-server containers** — Created on demand with the labels `managed-by=vscode-web-env-manager`, `env-id=<hex>`, `mount-folder=<name>`. Named `vscode-env-<12-hex>` so the nginx regex matches.
+
+## Quickstart
+
+```bash
+cp .env.example .env
+# Edit HOST_WORKSPACES_ROOT to an ABSOLUTE host path (e.g. /Users/you/.../vscode-web-manager/workspaces)
+docker compose up --build
+
+# Create an environment
+curl -X POST http://localhost:8080/api/environments \
+  -H 'Content-Type: application/json' \
+  -d '{"mount_folder": "demo"}'
+# {"id":"abc123def456","container_name":"vscode-env-abc123def456","status":"running",
+#  "url":"http://vscode-env-abc123def456.localhost:8080?folder=%2Fhome%2Fworkspace",
+#  "workspace_path":"/Users/you/.../workspaces/demo","reused":false}
+
+# Open the returned URL in your browser. Files you create in /home/workspace
+# inside VS Code will appear in workspaces/demo/ on the host, and vice versa.
+```
+
+## Configuration
+
+| Env var                | Purpose                                                                        |
+| ---------------------- | ------------------------------------------------------------------------------ |
+| `PUBLIC_BASE_URL`      | Base URL exposed to clients; the hostname is used to build per-env subdomains. |
+| `ENV_NETWORK`          | Docker network name (must be the same for backend, nginx, and env containers). |
+| `HOST_WORKSPACES_ROOT` | **Absolute** host path under which per-environment workspace directories live. |
+| `OPENVSCODE_IMAGE`     | Image used for environment containers (default `gitpod/openvscode-server`).    |
+
+`HOST_WORKSPACES_ROOT` must be absolute because it is bind-mounted 1:1 into the backend container (`${HOST_WORKSPACES_ROOT}:${HOST_WORKSPACES_ROOT}`); see the trade-offs section for why.
+
+## API reference
+
+All paths below are relative to `http://localhost:8080/api`. The backend itself listens on port 8000 inside the network — nginx is the public entry point.
+
+### `POST /environments` — create or reuse
+
+Request:
+
+```json
+{ "mount_folder": "demo" }
+```
+
+- `mount_folder` is required, must match `^[a-zA-Z0-9_-]+$` (1–80 chars).
+
+Response `201`:
+
+```json
+{
+  "id": "abc123def456",
+  "container_name": "vscode-env-abc123def456",
+  "status": "running",
+  "url": "http://vscode-env-abc123def456.localhost:8080?folder=%2Fhome%2Fworkspace",
+  "workspace_path": "/abs/path/to/workspaces/demo",
+  "reused": false
+}
+```
+
+- `reused: true` when an existing container for the same `mount_folder` was found and returned (see _idempotency_ below).
+
+Error mapping:
+
+- `400` — `mount_folder` resolved outside `HOST_WORKSPACES_ROOT` (defense-in-depth path check).
+- `409` — Docker reported a name conflict (rare; transient race).
+- `422` — `mount_folder` failed regex / length validation.
+- `502` — Docker daemon unreachable or other Docker API error.
+
+### `GET /environments` — list
+
+Response `200`:
+
+```json
+[
+  {
+    "id": "abc123def456",
+    "container_name": "vscode-env-abc123def456",
+    "status": "running",
+    "url": "http://vscode-env-abc123def456.localhost:8080?folder=%2Fhome%2Fworkspace",
+    "mount_folder": "demo"
+  }
+]
+```
+
+Only containers labeled `managed-by=vscode-web-env-manager` are returned — unrelated containers on the host are never touched.
+
+### `GET /environments/{env_id}` — details
+
+Response `200`:
+
+```json
+{
+  "id": "abc123def456",
+  "container_name": "vscode-env-abc123def456",
+  "status": "running",
+  "image": "gitpod/openvscode-server",
+  "labels": { "managed-by": "...", "env-id": "...", "mount-folder": "demo" },
+  "mounts": [ { "Source": "...", "Destination": "/home/workspace", "Mode": "rw" } ],
+  "networks": { "vscode-manager-net": { ... } }
+}
+```
+
+- `404` when the env id is unknown.
+
+### `POST /environments/{env_id}/stop`
+
+Response `200`:
+
+```json
+{
+  "id": "abc123def456",
+  "container_name": "vscode-env-abc123def456",
+  "status": "exited"
+}
+```
+
+- `404` when the env id is unknown.
+
+### `POST /environments/stop-all`
+
+Response `200`:
+
+```json
+{
+  "stopped_count": 1,
+  "skipped_count": 0,
+  "failed_count": 0,
+  "environments": [{ "id": "...", "status": "exited", "skipped": false }],
+  "failures": []
+}
+```
+
+### `DELETE /environments/{env_id}`
+
+Response `200`:
+
+```json
+{ "id": "abc123def456", "removed": true }
+```
+
+- `404` when the env id is unknown.
+
+### `GET /docker/info`
+
+Lightweight Docker connectivity probe. `200` with `{ "docker": "connected", ... }` when the daemon is reachable; `502` otherwise.
+
+### `GET /health`
+
+`200 { "status": "ok" }` — liveness only; does not touch Docker.
+
+## Engineering trade-offs
+
+These are the calls I made and would defend in a review:
+
+### 1. Sandboxed `mount_folder` instead of arbitrary host paths
+
+The assignment example is `GET /createEnv?mount_folder=/home/usr`. I instead accept a **name** (`mount_folder=demo`) and resolve it to a subfolder of `HOST_WORKSPACES_ROOT`. Two defenses, in order:
+
+1. **Pydantic regex** (`schemas/environment.py`): `^[a-zA-Z0-9_-]+$`, 1–80 chars — rejects slashes, dots, and absolute paths at the edge.
+2. **Resolved-path check** (`services/environment_service.py:_resolve_workspace_path`): even if the regex were relaxed, the resolved path is required to be inside `HOST_WORKSPACES_ROOT`, otherwise `ValueError → 400`.
+
+Accepting an arbitrary host path on an unauthenticated HTTP endpoint turns a one-line input into a remote read/write primitive against the host filesystem. The PDF explicitly says the API shape is open, so I took the more defensible shape.
+
+### 2. Host-path passthrough mount
+
+`docker-compose.yml` mounts `${HOST_WORKSPACES_ROOT}:${HOST_WORKSPACES_ROOT}` so the path is identical inside and outside the backend container. When the backend tells the Docker daemon to bind-mount a workspace into a new container, those paths are interpreted by the **daemon** (which runs on the host) — so they must be valid host paths. Using the same path on both sides avoids any translation step. `HOST_WORKSPACES_ROOT` must therefore be absolute.
+
+### 3. Idempotency by `mount-folder` label
+
+`POST /environments {"mount_folder":"demo"}` looks for an existing container labeled `mount-folder=demo`:
+
+- **running** → return it as-is with `reused: true`.
+- **exited** → start it, return with `reused: true`.
+- **start fails** → remove the broken container and provision a fresh one.
+
+The user gets a stable environment per folder without an explicit "find or create" branch in their client. Covered end-to-end by `tests/test_environment_service.py`.
+
+### 4. Container naming coupled to the nginx regex
+
+Container names are `vscode-env-<uuid4-hex[:12]>`. nginx's `server_name ~^(?<vscode_container>vscode-env-[a-f0-9]{12})\.localhost$` matches that exact shape and feeds the captured name straight to `proxy_pass http://$vscode_container:3000`. Docker's embedded DNS does the resolution inside `manager-net`. If you change the naming format, you must change the regex; both are called out in `CLAUDE.md` for future-me.
+
+### 5. `managed-by` label as the trust boundary
+
+The backend only ever lists, stops, or removes containers whose `managed-by` label equals `vscode-web-env-manager`. Containers on the host that don't carry this label are invisible to the service. This is the boundary between "things we own" and "things that happen to share the daemon."
+
+### 6. `Annotated[X, Depends(...)]` + `lru_cache` for the gateway
+
+`get_docker_gateway()` is `@lru_cache(maxsize=1)` and routes inject the gateway via the modern FastAPI `Annotated` form. Two payoffs: one persistent Docker client connection across requests instead of one per call, and clean test injection via `app.dependency_overrides[get_environment_service]` (see `tests/test_environments_routes.py`).
+
+### 7. `restart: unless-stopped` (not `always`)
+
+Backend, nginx, and per-env containers all use `unless-stopped`. `always` would override an explicit `POST /environments/{id}/stop` on the next daemon reconciliation, making the stop endpoint a lie. `unless-stopped` respects an operator stop and only revives containers that exited on their own or were running before a host reboot.
+
+### 8. Narrowed route exceptions
+
+Routes catch `docker.errors.APIError` (with a special case for `status_code==409` → HTTP 409) and `docker.errors.DockerException` → HTTP 502 (Docker side is unhealthy). Anything else propagates so FastAPI logs a real 500 with a stack trace, instead of a flattened "Internal Server Error" with no signal.
+
+## Local development (without Docker)
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+uvicorn app.main:app --reload --port 8000
+# OpenAPI docs at http://localhost:8000/docs
+```
+
+Without nginx, the env-container subdomains won't resolve — useful only for hitting the API directly.
+
+## Testing
+
+```bash
+cd backend
+python -m ruff check .   # lint
+python -m pytest -v      # 34 tests; service layer + route layer + schemas + health
+```
+
+Service tests use a handwritten `FakeDockerGateway` (`tests/test_environment_service.py`) — no Docker daemon needed. Route tests use `app.dependency_overrides` to inject a fake service (`tests/test_environments_routes.py`), so status-code mapping is verified without touching real containers.
+
+## CI
+
+`.github/workflows/ci.yml` runs on every push and PR: installs deps, runs `ruff check`, runs `pytest`, builds the backend Docker image, and validates `docker compose config`.
+
+## AI usage note
+
+AI tools were used to review the project structure, Docker/Nginx configuration, test strategy, CI workflow, and README wording.
+
+All generated suggestions were reviewed, adjusted, tested locally, and validated through GitHub Actions before being included.
