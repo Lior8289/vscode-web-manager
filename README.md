@@ -1,9 +1,3 @@
-# VS Code Web Environment Manager
-
-![backend](https://img.shields.io/docker/v/lior8289/vscode-web-manager-backend?label=backend&logo=docker)
-![frontend](https://img.shields.io/docker/v/lior8289/vscode-web-manager-frontend?label=frontend&logo=docker)
-![CI](https://github.com/lior8289/vscode-web-manager/actions/workflows/ci.yml/badge.svg)
-
 A small local service that spins up browser-accessible [OpenVSCode Server](https://github.com/gitpod-io/openvscode-server) environments on demand and exposes management endpoints for the containers, networks, and volumes it owns. FastAPI talks to the host Docker daemon over its socket; nginx is the public entry point and routes each environment to its own subdomain.
 
 Submitted as the **Cymotive home assignment**.
