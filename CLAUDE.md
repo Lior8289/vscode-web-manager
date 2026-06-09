@@ -39,8 +39,10 @@ docker compose config       # validate compose file (CI runs this)
 For reviewers who don't want to build (uses pre-built images from Docker Hub):
 
 ```bash
-HOST_WORKSPACES_ROOT="$PWD/workspaces" docker compose -f docker-compose.hub.yml up
+docker compose -f docker-compose.hub.yml up
 ```
+
+`docker-compose.hub.yml` defaults every env var, including `HOST_WORKSPACES_ROOT=/tmp/vscode-web-manager-workspaces` (Docker auto-creates the dir on bind-mount). Override `HOST_WORKSPACES_ROOT` to persist workspaces across reboots.
 
 ## Architecture
 

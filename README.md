@@ -56,31 +56,36 @@ Three runtime pieces wired on a single Docker network (`manager-net`, name from 
 
 The same nginx container also serves a React dashboard at `http://localhost:8080/`. The dashboard, the `/api/*` routes, and the per-environment subdomains all share one origin (no CORS) and one port. See [Frontend](#frontend).
 
-## Reviewer quickstart (zero build)
+## Reviewer quickstart (zero build, zero config)
 
-Three commands. No `npm`, no `pip`, no `--build`. Just Docker.
+Three commands. No `npm`, no `pip`, no `--build`, no env vars to set.
 
 ```bash
 git clone https://github.com/Lior8289/vscode-web-manager.git
 cd vscode-web-manager
-HOST_WORKSPACES_ROOT="$PWD/workspaces" docker compose -f docker-compose.hub.yml up
+docker compose -f docker-compose.hub.yml up
 ```
 
-That pulls `lior8289/vscode-web-manager-backend:latest` and `lior8289/vscode-web-manager-frontend:latest` from Docker Hub. Both are multi-arch — Docker auto-selects `arm64` on Apple Silicon or `amd64` on Intel.
+That pulls `lior8289/vscode-web-manager-backend:latest` and `lior8289/vscode-web-manager-frontend:latest` from Docker Hub. Both are multi-arch — Docker auto-selects `arm64` on Apple Silicon or `amd64` on Intel. Workspaces default to `/tmp/vscode-web-manager-workspaces` (auto-created by Docker on first run; cleared on host reboot — ideal for a demo).
 
-Then open <http://localhost:8080>, click **New environment**, give it a folder name (e.g. `demo`), and click the resulting URL to open VS Code in a new tab. Files saved in `/home/workspace` inside VS Code appear in `./workspaces/demo/` on the host.
+Then open <http://localhost:8080>, click **New environment**, give it a folder name (e.g. `demo`), and click the resulting URL to open VS Code in a new tab. Files saved in `/home/workspace` inside VS Code appear in `/tmp/vscode-web-manager-workspaces/demo/` on the host.
 
 To stop: `Ctrl-C`, then `docker compose -f docker-compose.hub.yml down` to remove the containers.
 
 To fetch a fresh `latest` later: `docker compose -f docker-compose.hub.yml pull && docker compose -f docker-compose.hub.yml up`.
 
+Want workspaces to survive reboot? Set `HOST_WORKSPACES_ROOT` to an absolute path of your choice before `up`:
+
+```bash
+HOST_WORKSPACES_ROOT="$HOME/vscode-workspaces" docker compose -f docker-compose.hub.yml up
+```
+
 ## Quickstart (build from source)
 
-For development with code changes:
+For development with code changes. `.env.example` defaults `HOST_WORKSPACES_ROOT` to `/tmp/vscode-web-manager-workspaces` (works zero-edit); change it to a path inside the repo if you want workspaces to persist across reboots.
 
 ```bash
 cp .env.example .env
-# Edit HOST_WORKSPACES_ROOT to an ABSOLUTE host path (e.g. /Users/you/.../vscode-web-manager/workspaces)
 docker compose up --build
 
 # Create an environment

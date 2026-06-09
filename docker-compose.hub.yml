@@ -5,11 +5,11 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${HOST_WORKSPACES_ROOT:?set HOST_WORKSPACES_ROOT to an absolute path, e.g. HOST_WORKSPACES_ROOT="$PWD/workspaces"}:${HOST_WORKSPACES_ROOT}
+      - ${HOST_WORKSPACES_ROOT:-/tmp/vscode-web-manager-workspaces}:${HOST_WORKSPACES_ROOT:-/tmp/vscode-web-manager-workspaces}
     environment:
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:8080}
       - ENV_NETWORK=${ENV_NETWORK:-vscode-manager-net}
-      - HOST_WORKSPACES_ROOT=${HOST_WORKSPACES_ROOT}
+      - HOST_WORKSPACES_ROOT=${HOST_WORKSPACES_ROOT:-/tmp/vscode-web-manager-workspaces}
       - OPENVSCODE_IMAGE=${OPENVSCODE_IMAGE:-gitpod/openvscode-server}
     networks:
       - manager-net
