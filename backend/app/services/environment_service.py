@@ -1,4 +1,5 @@
 import socket
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -46,6 +47,12 @@ def _wait_for_openvscode_ready(container_name: str) -> None:
 
 
 class EnvironmentService:
+    # Class-level registry so locks survive across per-request service instances.
+    # Single-process correctness only; horizontal scale would need a distributed
+    # lock or a DB unique constraint on (mount-folder).
+    _mount_locks_registry: dict[str, threading.Lock] = {}
+    _registry_lock = threading.Lock()
+
     def __init__(
         self,
         docker_gateway: DockerGateway,
@@ -55,7 +62,22 @@ class EnvironmentService:
         self.docker = docker_gateway
         self._wait_for_ready = wait_for_ready or _wait_for_openvscode_ready
 
+    @classmethod
+    def _get_mount_folder_lock(cls, mount_folder: str) -> threading.Lock:
+        with cls._registry_lock:
+            lock = cls._mount_locks_registry.get(mount_folder)
+            if lock is None:
+                lock = threading.Lock()
+                cls._mount_locks_registry[mount_folder] = lock
+            return lock
+
     def create_environment(self, mount_folder: str) -> dict:
+        # Serialize creates per mount_folder so concurrent requests don't both
+        # pass the "no existing container" check and then provision duplicates.
+        with self._get_mount_folder_lock(mount_folder):
+            return self._create_environment_locked(mount_folder)
+
+    def _create_environment_locked(self, mount_folder: str) -> dict:
         existing_container = self._find_existing_environment_by_mount_folder(mount_folder)
 
         if existing_container is not None:

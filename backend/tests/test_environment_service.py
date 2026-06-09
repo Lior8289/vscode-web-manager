@@ -1,3 +1,4 @@
+import threading
 from pathlib import Path
 
 import pytest
@@ -339,6 +340,85 @@ def test_list_environments_only_returns_managed(service, gateway):
 
     assert len(environments) == 1
     assert environments[0]["id"] == "managed00001"
+
+
+def test_concurrent_creates_for_same_mount_folder_provision_only_one(
+    service, gateway, test_settings
+):
+    """Concurrent POST /environments with the same mount_folder must not
+    double-provision. Without the per-mount lock, both threads pass the
+    "no existing container" check and create two containers labeled with
+    the same mount-folder.
+
+    The fix serializes creates per mount_folder via a class-level lock
+    registry; only the first thread actually provisions, the rest reuse.
+    """
+    barrier = threading.Barrier(5)
+    results: list[dict] = []
+    errors: list[BaseException] = []
+    results_lock = threading.Lock()
+
+    def worker() -> None:
+        barrier.wait()  # release all threads simultaneously
+        try:
+            result = service.create_environment("demo")
+            with results_lock:
+                results.append(result)
+        except BaseException as exc:  # noqa: BLE001
+            with results_lock:
+                errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(5)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert len(results) == 5
+    assert len(gateway.run_container_calls) == 1, (
+        f"expected exactly one container to be created, got "
+        f"{len(gateway.run_container_calls)}"
+    )
+
+    created = [result for result in results if result["reused"] is False]
+    reused = [result for result in results if result["reused"] is True]
+    assert len(created) == 1
+    assert len(reused) == 4
+
+    # All callers see the same env id (the one that won the race).
+    assert len({result["id"] for result in results}) == 1
+
+
+def test_concurrent_creates_for_different_mount_folders_run_in_parallel(
+    service, gateway, test_settings
+):
+    """Per-folder locking must NOT serialize creates for unrelated folders."""
+    barrier = threading.Barrier(3)
+    results: list[dict] = []
+    results_lock = threading.Lock()
+
+    def worker(mount_folder: str) -> None:
+        barrier.wait()
+        result = service.create_environment(mount_folder)
+        with results_lock:
+            results.append(result)
+
+    threads = [
+        threading.Thread(target=worker, args=(folder,))
+        for folder in ("alpha", "beta", "gamma")
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(results) == 3
+    # Three different folders → three provisions, none reused.
+    assert len(gateway.run_container_calls) == 3
+    assert all(result["reused"] is False for result in results)
+    assert {result["id"] for result in results}  # all distinct
+    assert len({result["id"] for result in results}) == 3
 
 
 def test_get_environment_returns_inspection_details(service, gateway):
