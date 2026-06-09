@@ -8,12 +8,11 @@ jobs:
   backend-checks:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: backend
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -21,11 +20,28 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependecies
-        run: pip install -r requirements.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
-      - name: Run tests
-        run: pytest
+      - name: Lint backend
+        working-directory: backend
+        run: python -m ruff check .
 
-      - name: Build Docker image
-        run: docker build -t vscode-manager-backend .
+      - name: Run backend tests
+        working-directory: backend
+        run: python -m pytest
+
+      - name: Build backend Docker image
+        run: docker build -t vscode-manager-backend ./backend
+
+      - name: Validate Docker Compose config
+        env:
+          PUBLIC_BASE_URL: http://localhost:8080
+          ENV_NETWORK: vscode-manager-net
+          HOST_WORKSPACES_ROOT: /tmp/vscode-workspaces
+          OPENVSCODE_IMAGE: gitpod/openvscode-server
+        run: docker compose config
