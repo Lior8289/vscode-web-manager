@@ -247,8 +247,8 @@ These are the calls I made and would defend in a review:
 
 The assignment example is `GET /createEnv?mount_folder=/home/usr`. I instead accept a **name** (`mount_folder=demo`) and resolve it to a subfolder of `HOST_WORKSPACES_ROOT`. Two defenses, in order:
 
-1. **Pydantic regex** (`schemas/environment.py`): `^[a-zA-Z0-9_-]+$`, 1–80 chars — rejects slashes, dots, and absolute paths at the edge.
-2. **Resolved-path check** (`services/environment_service.py:_resolve_workspace_path`): even if the regex were relaxed, the resolved path is required to be inside `HOST_WORKSPACES_ROOT`, otherwise `ValueError → 400`.
+1. **Pydantic regex** (`schemas.py`): `^[a-zA-Z0-9_-]+$`, 1–80 chars — rejects slashes, dots, and absolute paths at the edge.
+2. **Resolved-path check** (`service.py:_resolve_workspace_path`): even if the regex were relaxed, the resolved path is required to be inside `HOST_WORKSPACES_ROOT`, otherwise `ValueError → 400`.
 
 Accepting an arbitrary host path on an unauthenticated HTTP endpoint turns a one-line input into a remote read/write primitive against the host filesystem. The PDF explicitly says the API shape is open, so I took the more defensible shape.
 

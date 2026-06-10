@@ -42,5 +42,9 @@ build/
 dist/
 *.egg-info/
 
+# Self-use prep / scratch docs (kept on disk, not in repo)
 CLAUDE.md
 INTERVIEW_PREPARATION.md
+INTERVIEW_PREPARATION_CODEX.md
+EXPLANATION.md
+QA.md

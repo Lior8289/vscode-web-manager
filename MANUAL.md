@@ -666,7 +666,7 @@ python -m ruff check .
 python -m ruff check --fix .
 
 # Check a single file
-python -m ruff check app/services/environment_service.py
+python -m ruff check app/service.py
 
 # Show what would be fixed without writing
 python -m ruff check --diff .

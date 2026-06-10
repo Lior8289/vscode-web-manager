@@ -226,7 +226,7 @@ Docker daemon
 Location:
 
 ```text
-vscode-web-manager/backend/app/api/routes/
+vscode-web-manager/backend/app/routes/
 ```
 
 Route files:
@@ -249,7 +249,7 @@ The route layer should stay thin. It should not contain Docker lifecycle logic.
 Location:
 
 ```text
-vscode-web-manager/backend/app/services/environment_service.py
+vscode-web-manager/backend/app/service.py
 ```
 
 The service layer owns business logic:
@@ -269,7 +269,7 @@ The service raises domain-level exceptions such as `EnvironmentNotFoundError`.
 Location:
 
 ```text
-vscode-web-manager/backend/app/infra/docker_gateway.py
+vscode-web-manager/backend/app/docker_gateway.py
 ```
 
 `DockerGateway` is the only layer that directly imports and wraps the Docker SDK.
@@ -286,7 +286,7 @@ Benefits:
 Location:
 
 ```text
-vscode-web-manager/backend/app/core/config.py
+vscode-web-manager/backend/app/config.py
 ```
 
 Settings are loaded with `pydantic-settings`.

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.environment import CreateEnvironmentRequest
+from app.schemas import CreateEnvironmentRequest
 
 
 def test_create_environment_request_accepts_valid_mount_folder() -> None:

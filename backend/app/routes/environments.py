@@ -3,9 +3,9 @@ from typing import Annotated
 from docker.errors import APIError, DockerException
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.infra.docker_gateway import DockerGateway, get_docker_gateway
-from app.schemas.environment import CreateEnvironmentRequest
-from app.services.environment_service import EnvironmentNotFoundError, EnvironmentService
+from app.docker_gateway import DockerGateway, get_docker_gateway
+from app.schemas import CreateEnvironmentRequest
+from app.service import EnvironmentNotFoundError, EnvironmentService
 
 router = APIRouter(prefix="/environments", tags=["environments"])
 

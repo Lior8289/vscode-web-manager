@@ -58,11 +58,11 @@ Three runtime pieces wired together on a single Docker network (`manager-net`, n
 
 `main.py` builds the FastAPI app via `create_app()` and includes three routers. Below that, code is split by responsibility — keep this separation when adding features:
 
-- `api/routes/` — thin HTTP handlers. They construct a service per request via `get_environment_service()` (no DI container; just `EnvironmentService(DockerGateway())`) and translate domain exceptions to `HTTPException`.
-- `services/environment_service.py` — all environment lifecycle logic (create / list / get / stop / stop-all / remove, plus reuse-existing-by-mount-folder). Raises `EnvironmentNotFoundError` for 404 mapping in the route layer.
-- `infra/docker_gateway.py` — only place that imports `docker`. Wraps the SDK so services never touch `docker.from_env()` directly. When adding Docker calls, extend `DockerGateway` rather than reaching into the SDK from services.
-- `schemas/` — Pydantic request/response models. `CreateEnvironmentRequest.mount_folder` is regex-restricted to `^[a-zA-Z0-9_-]+$` (1–80 chars) — this is the first line of defense against path traversal; tests in `tests/test_schemas.py` lock that contract.
-- `core/config.py` — `Settings` loaded from `.env` via `pydantic-settings`. Settings are read as a module-level `settings` singleton.
+- `routes/` — thin HTTP handlers. They construct a service per request via `get_environment_service()` (no DI container; just `EnvironmentService(DockerGateway())`) and translate domain exceptions to `HTTPException`.
+- `service.py` — all environment lifecycle logic (create / list / get / stop / stop-all / remove, plus reuse-existing-by-mount-folder). Raises `EnvironmentNotFoundError` for 404 mapping in the route layer.
+- `docker_gateway.py` — only place that imports `docker`. Wraps the SDK so services never touch `docker.from_env()` directly. When adding Docker calls, extend `DockerGateway` rather than reaching into the SDK from services.
+- `schemas.py` — Pydantic request models. `CreateEnvironmentRequest.mount_folder` is regex-restricted to `^[a-zA-Z0-9_-]+$` (1–80 chars) — this is the first line of defense against path traversal; tests in `tests/test_schemas.py` lock that contract.
+- `config.py` — `Settings` loaded from `.env` via `pydantic-settings`. Settings are read as a module-level `settings` singleton.
 
 ### Critical invariants
 
@@ -78,7 +78,7 @@ Three runtime pieces wired together on a single Docker network (`manager-net`, n
 
 There is no DI container. Two small patterns instead:
 
-- `get_docker_gateway()` in `infra/docker_gateway.py` is `@lru_cache(maxsize=1)` so the Docker client is a process-wide singleton (one persistent connection, not one per request).
+- `get_docker_gateway()` in `docker_gateway.py` is `@lru_cache(maxsize=1)` so the Docker client is a process-wide singleton (one persistent connection, not one per request).
 - Routes inject via the modern `Annotated[X, Depends(...)]` form (ruff B008 flags the legacy default-arg form). The route layer composes the service per request: `EnvironmentService(docker_gateway)`. Tests swap the service entirely with `app.dependency_overrides[get_environment_service] = lambda: FakeEnvironmentService()` — see `tests/test_environments_routes.py`.
 
 ### URL construction

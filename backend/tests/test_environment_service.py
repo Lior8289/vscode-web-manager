@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from docker.errors import APIError, NotFound
 
-from app.services.environment_service import (
+from app.service import (
     MANAGED_BY_LABEL,
     EnvironmentNotFoundError,
     EnvironmentService,

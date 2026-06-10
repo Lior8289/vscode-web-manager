@@ -11,8 +11,8 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 from docker.errors import NotFound
 from docker.models.containers import Container
 
-from app.core.config import settings
-from app.infra.docker_gateway import DockerGateway
+from app.config import settings
+from app.docker_gateway import DockerGateway
 
 MANAGED_BY_LABEL = "vscode-web-env-manager"
 

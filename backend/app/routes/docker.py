@@ -3,7 +3,7 @@ from typing import Annotated
 from docker.errors import DockerException
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.infra.docker_gateway import DockerGateway, get_docker_gateway
+from app.docker_gateway import DockerGateway, get_docker_gateway
 
 router = APIRouter(prefix="/docker", tags=["docker"])
 

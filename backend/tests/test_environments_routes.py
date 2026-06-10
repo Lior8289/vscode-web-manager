@@ -3,9 +3,9 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.routes.environments import get_environment_service
 from app.main import app
-from app.services.environment_service import EnvironmentNotFoundError
+from app.routes.environments import get_environment_service
+from app.service import EnvironmentNotFoundError
 
 
 class FakeEnvironmentService:
