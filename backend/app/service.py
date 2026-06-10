@@ -91,6 +91,8 @@ class EnvironmentService:
         workspace_path = self._resolve_workspace_path(mount_folder)
 
         workspace_path.mkdir(parents=True, exist_ok=True)
+        # Writable by openvscode (UID 1000) on bind mounts without UID remap (Linux/WSL2).
+        workspace_path.chmod(0o777)
 
         container = self.docker.run_container(
             image=settings.openvscode_image,
@@ -272,6 +274,10 @@ class EnvironmentService:
         labels = container.labels
         mount_folder = labels.get("mount-folder", "unknown")
         workspace_path = self._resolve_workspace_path(mount_folder)
+
+        # Heal perms on existing workspaces created before the chmod fix.
+        if workspace_path.exists():
+            workspace_path.chmod(0o777)
 
         return {
             "id": labels.get("env-id", "unknown"),
