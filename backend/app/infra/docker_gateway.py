@@ -25,14 +25,14 @@ class DockerGateway:
             self.client.images.pull(image)
 
     def run_container(
-            self,
-            *,
-            image: str,
-            name: str,
-            network: str,
-            labels: dict[str, str],
-            volumes: dict[str, dict[str, str]],
-            restart_policy: dict[str, str] | None = None,
+        self,
+        *,
+        image: str,
+        name: str,
+        network: str,
+        labels: dict[str, str],
+        volumes: dict[str, dict[str, str]],
+        restart_policy: dict[str, str] | None = None,
     ) -> Container:
         self.ensure_image_exists(image)
 
@@ -45,23 +45,23 @@ class DockerGateway:
             volumes=volumes,
             restart_policy=restart_policy or DEFAULT_RESTART_POLICY,
         )
-    
+
     def list_managed_containers(self) -> list[Container]:
         return self.client.containers.list(
             all=True,
             filters={"label": "managed-by=vscode-web-env-manager"},
         )
-    
+
     def get_container(self, name: str) -> Container:
         return self.client.containers.get(name)
-    
+
     def inspect_container(self, container: Container) -> dict[str, Any]:
         container.reload()
         return container.attrs
-    
+
     def start_container(self, container: Container) -> None:
         container.start()
-    
+
     def stop_container(self, container: Container) -> None:
         container.stop()
 

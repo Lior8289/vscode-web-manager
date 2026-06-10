@@ -52,6 +52,20 @@ Three runtime pieces wired on a single Docker network (`manager-net`, name from 
 
 The same nginx container also serves a React dashboard at `http://localhost:8080/`. The dashboard, the `/api/*` routes, and the per-environment subdomains all share one origin (no CORS) and one port. See [Frontend](#frontend).
 
+## Repository layout
+
+```text
+vscode-web-manager/
+  backend/                 FastAPI control plane, Docker SDK adapter, tests
+  frontend/                React/Vite dashboard source and frontend Dockerfile
+  deploy/nginx.conf        Public gateway config for SPA, API, and editor routing
+  postman/                 Postman collection for API smoke testing
+  docker-compose.yml       Local source-build stack
+  docker-compose.hub.yml   Zero-build reviewer stack using Docker Hub images
+```
+
+`deploy/nginx.conf` is intentionally outside `frontend/`: nginx is the public gateway for the full app, not just static frontend hosting. The config is still baked into the frontend/nginx image at build time so the Docker Hub image remains self-contained.
+
 ## Reviewer quickstart (zero build, zero config)
 
 Three commands. No `npm`, no `pip`, no `--build`, no env vars to set.
@@ -330,7 +344,7 @@ npm run build       # tsc -b && vite build → dist/
 
 ### How it ships in Docker
 
-The existing `nginx` service in `docker-compose.yml` builds from `frontend/Dockerfile` — a multi-stage build that compiles the React app in `node:20-alpine`, then copies the `dist/` into `nginx:1.27-alpine` along with `frontend/nginx.conf`. The nginx config gained one `location /` block to serve the static assets with an SPA fallback to `index.html`; the existing `/api/`, `/health`, and the subdomain-regex routing are unchanged. There is no separate frontend container, and the config is baked into the image (no compose-time bind mount), so `docker-compose.hub.yml` is a true image-only entry point — reviewers don't need the nginx config on disk.
+The existing `nginx` service in `docker-compose.yml` builds with `frontend/Dockerfile` from the repo root. It is a multi-stage build that compiles the React app in `node:20-alpine`, then copies the `dist/` into `nginx:1.27-alpine` along with `deploy/nginx.conf`. The nginx config has one `location /` block to serve the static assets with an SPA fallback to `index.html`; the existing `/api/`, `/health`, and the subdomain-regex routing are unchanged. There is no separate frontend container, and the config is baked into the image (no compose-time bind mount), so `docker-compose.hub.yml` is a true image-only entry point — reviewers don't need the nginx config on disk.
 
 ### Keyboard shortcuts
 
@@ -355,7 +369,7 @@ Service tests use a handwritten `FakeDockerGateway` (`tests/test_environment_ser
 `.github/workflows/ci.yml` runs on every push and PR. Three jobs:
 
 - **`backend-checks`** — installs Python deps, `ruff check`, `pytest`, builds the backend Docker image, validates `docker compose config`.
-- **`frontend-checks`** — installs npm deps, `eslint`, `tsc -b --noEmit`, `vite build`, builds the frontend Docker image (`frontend/Dockerfile`).
+- **`frontend-checks`** — installs npm deps, `eslint`, `tsc -b --noEmit`, `vite build`, builds the frontend/nginx Docker image using `frontend/Dockerfile` from the repo root.
 - **`publish-images`** — runs only after both check jobs pass _and only on push to `main`_. Logs in to Docker Hub, builds both images for `linux/amd64` + `linux/arm64` using buildx + QEMU, pushes them as `lior8289/vscode-web-manager-{backend,frontend}:latest` plus a `sha-<short>` tag for traceability. Cached via `type=gha` so warm builds finish in ~90s. Never runs on PRs (no secret exposure, no risk of publishing unverified code).
 
 ## AI usage note
@@ -363,6 +377,6 @@ Service tests use a handwritten `FakeDockerGateway` (`tests/test_environment_ser
 AI tools were used at multiple stages of this project. All generated output was reviewed, adjusted, tested locally, and validated through GitHub Actions before being included:
 
 - **Project planning** — early architecture exploration, stack decisions, and the FastAPI ↔ `DockerGateway` ↔ nginx layering (single-responsibility split, where domain exceptions become HTTP status codes, where the Docker SDK lives).
-- **Configuration and complex files** — `frontend/nginx.conf` (the subdomain-regex virtual host with Docker embedded-DNS resolution, baked into the frontend image), `docker-compose.yml` and `docker-compose.hub.yml` (host-path passthrough mount, env-var defaults, reviewer zero-config flow), the backend and frontend `Dockerfile`s (slim Python image, multi-stage Vite + nginx build), and `.github/workflows/ci.yml` (parallel check jobs + multi-arch Docker Hub publish via buildx, QEMU, and GHA layer cache).
+- **Configuration and complex files** — `deploy/nginx.conf` (the subdomain-regex virtual host with Docker embedded-DNS resolution, baked into the frontend/nginx image), `docker-compose.yml` and `docker-compose.hub.yml` (host-path passthrough mount, env-var defaults, reviewer zero-config flow), the backend and frontend `Dockerfile`s (slim Python image, multi-stage Vite + nginx build), and `.github/workflows/ci.yml` (parallel check jobs + multi-arch Docker Hub publish via buildx, QEMU, and GHA layer cache).
 - **Test writing** — the `FakeDockerGateway` / `FakeContainer` pattern in `tests/test_environment_service.py` for hermetic service-layer tests, and the `app.dependency_overrides` route tests in `tests/test_environments_routes.py` that verify status-code mapping without a real Docker daemon.
 - **Afterward polish and code scans** — README wording and structure, error-mapping consistency between the route layer and service exceptions, and a security review of `mount_folder` validation (the Pydantic regex plus the resolved-path defense in depth).

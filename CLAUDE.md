@@ -49,7 +49,7 @@ docker compose -f docker-compose.hub.yml up
 Three runtime pieces wired together on a single Docker network (`manager-net`, name from `ENV_NETWORK`):
 
 1. **Backend** (`backend/app/`) — FastAPI app exposing `/health`, `/docker/info`, and `/environments/*`. It talks to the host's Docker daemon via the mounted socket and creates/lists/stops/removes per-environment containers.
-2. **nginx** (`frontend/nginx.conf`, baked into the frontend image) — Two virtual hosts on port 80:
+2. **nginx** (`deploy/nginx.conf`, baked into the frontend/nginx image) — Two virtual hosts on port 80:
    - `localhost` → proxies `/api/` to the backend and `/health` directly.
    - Regex host `~^(?<vscode_container>vscode-env-[a-f0-9]{12})\.localhost$` → captures the container name from the subdomain and proxies to `http://$vscode_container:3000` with WebSocket upgrade. Relies on Docker's embedded DNS (`resolver 127.0.0.11`) to resolve the captured name.
 3. **openvscode-server containers** — Launched by the backend with labels `managed-by=vscode-web-env-manager`, `env-id=<hex>`, `mount-folder=<name>`. Named `vscode-env-<12-hex>` so nginx's regex matches them.
@@ -107,11 +107,11 @@ Two layers, no real Docker daemon needed:
 `.github/workflows/ci.yml` runs on every push and PR with three jobs:
 
 - **`backend-checks`** — installs backend deps, `ruff check`, `pytest`, builds the backend Docker image, validates `docker compose config` (with placeholder env vars in the job's `env:` block — the validation does not require a real `HOST_WORKSPACES_ROOT` to exist).
-- **`frontend-checks`** — `npm ci` (cached on `frontend/package-lock.json`), `npm run lint` (eslint), `npm run typecheck` (`tsc -b --noEmit`), `npm run build` (`tsc -b && vite build`), and `docker build ./frontend` to exercise the multi-stage Dockerfile.
+- **`frontend-checks`** — `npm ci` (cached on `frontend/package-lock.json`), `npm run lint` (eslint), `npm run typecheck` (`tsc -b --noEmit`), `npm run build` (`tsc -b && vite build`), and `docker build -f frontend/Dockerfile .` to exercise the multi-stage Dockerfile from the repo-root context.
 - **`publish-images`** — `needs: [backend-checks, frontend-checks]` and gated `if: github.event_name == 'push' && github.ref == 'refs/heads/main'`. Logs in to Docker Hub with `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` repo secrets, then uses `docker/build-push-action@v6` with `platforms: linux/amd64,linux/arm64` (multi-arch via QEMU) to publish `lior8289/vscode-web-manager-backend` and `lior8289/vscode-web-manager-frontend` tagged `latest` + `sha-<short>`. Cached with `type=gha,mode=max`, scoped per image. Never runs on PRs.
 
 The first two jobs must stay green on every PR. `publish-images` only runs on `main` and must stay green there.
 
 ## Reviewer flow (Docker Hub)
 
-`docker-compose.hub.yml` is the zero-build entry point for reviewers. Same topology as `docker-compose.yml` but uses `image:` not `build:` and defaults every env var (including `HOST_WORKSPACES_ROOT=/tmp/vscode-web-manager-workspaces`, which Docker auto-creates on first bind-mount). The nginx config is baked into the frontend image (`frontend/nginx.conf` is `COPY`-ed in the runtime stage), so neither compose file bind-mounts it — the image is self-sufficient. If you change nginx routing, just rebuild the frontend image (CI does this automatically on push to `main`).
+`docker-compose.hub.yml` is the zero-build entry point for reviewers. Same topology as `docker-compose.yml` but uses `image:` not `build:` and defaults every env var (including `HOST_WORKSPACES_ROOT=/tmp/vscode-web-manager-workspaces`, which Docker auto-creates on first bind-mount). The nginx config is baked into the frontend/nginx image (`deploy/nginx.conf` is `COPY`-ed in the runtime stage), so neither compose file bind-mounts it — the image is self-sufficient. If you change nginx routing, just rebuild the frontend image (CI does this automatically on push to `main`).

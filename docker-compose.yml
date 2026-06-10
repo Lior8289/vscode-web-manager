@@ -16,7 +16,9 @@ services:
       - manager-net
 
   nginx:
-    build: ./frontend
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
     container_name: vscode-manager-nginx
     restart: unless-stopped
     ports:

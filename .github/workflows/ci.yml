@@ -80,7 +80,7 @@ jobs:
         run: npm run build
 
       - name: Build frontend Docker image
-        run: docker build -t vscode-manager-nginx ./frontend
+        run: docker build -t vscode-manager-nginx -f frontend/Dockerfile .
 
   publish-images:
     name: Publish Docker images
@@ -147,7 +147,8 @@ jobs:
       - name: Build and push frontend image
         uses: docker/build-push-action@v6
         with:
-          context: ./frontend
+          context: .
+          file: frontend/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta-frontend.outputs.tags }}
