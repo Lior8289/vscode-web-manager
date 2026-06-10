@@ -4,7 +4,36 @@ A small local service that spins up browser-accessible [OpenVSCode Server](https
 
 Submitted as the **Cymotive home assignment**.
 
-> **Reviewing this?** Skip the build — pre-built multi-arch images (amd64 + arm64) are published to Docker Hub on every push to `main`. Jump to [Reviewer quickstart (zero build)](#reviewer-quickstart-zero-build).
+## Running the application
+
+To start the application, run:
+
+```bash
+./my-vscode-app.sh
+```
+
+The script brings up the full stack via `docker-compose.hub.yml` (prebuilt multi-arch images from Docker Hub — no `npm`, no `pip`, no `--build`), waits until the backend is healthy, and then prints the dashboard URL.
+
+Open the printed URL — by default <http://localhost:8080> — to access the dashboard. From there click **New environment**, give it a folder name (e.g. `demo`), and click the resulting URL to open VS Code in a new tab. Files saved in `/home/workspace` inside VS Code appear in `/tmp/vscode-web-manager-workspaces/demo/` on the host.
+
+To stop the stack: `docker compose -f docker-compose.hub.yml down`.
+
+### API endpoints
+
+All endpoints share the same origin as the dashboard. Replace `http://localhost:8080` with whatever URL the script printed.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Backend liveness check. Returns `{"status":"ok"}`. |
+| `GET` | `/api/docker/info` | Docker daemon connectivity + server version + container/image counts. |
+| `POST` | `/api/environments` | Create a new VS Code environment. Body: `{"mount_folder":"demo"}`. Returns the per-env URL. |
+| `GET` | `/api/environments` | List every managed environment with status and URL. |
+| `GET` | `/api/environments/{id}` | Inspect one environment (image, labels, mounts, networks). |
+| `POST` | `/api/environments/{id}/stop` | Stop one environment without removing it. |
+| `POST` | `/api/environments/stop-all` | Stop every running environment, with per-container success/failure detail. |
+| `DELETE` | `/api/environments/{id}` | Force-remove an environment container. |
+
+For full request/response examples see [API reference](#api-reference).
 
 ## Architecture
 
@@ -66,29 +95,17 @@ vscode-web-manager/
 
 `deploy/nginx.conf` is intentionally outside `frontend/`: nginx is the public gateway for the full app, not just static frontend hosting. The config is still baked into the frontend/nginx image at build time so the Docker Hub image remains self-contained.
 
-## Reviewer quickstart (zero build, zero config)
+## Running the application — under the hood
 
-Three commands. No `npm`, no `pip`, no `--build`, no env vars to set.
+`./my-vscode-app.sh` is a thin wrapper around `docker compose -f docker-compose.hub.yml up -d`. It pulls `lior8289/vscode-web-manager-backend:latest` and `lior8289/vscode-web-manager-frontend:latest` from Docker Hub (multi-arch — Docker auto-selects `arm64` on Apple Silicon or `amd64` on Intel), then polls `/health` until the backend is ready before printing the dashboard URL.
 
-```bash
-git clone https://github.com/Lior8289/vscode-web-manager.git
-cd vscode-web-manager
-docker compose -f docker-compose.hub.yml up
-```
-
-That pulls `lior8289/vscode-web-manager-backend:latest` and `lior8289/vscode-web-manager-frontend:latest` from Docker Hub. Both are multi-arch — Docker auto-selects `arm64` on Apple Silicon or `amd64` on Intel. Workspaces default to `/tmp/vscode-web-manager-workspaces` (auto-created by Docker on first run; cleared on host reboot — ideal for a demo).
-
-Then open <http://localhost:8080>, click **New environment**, give it a folder name (e.g. `demo`), and click the resulting URL to open VS Code in a new tab. Files saved in `/home/workspace` inside VS Code appear in `/tmp/vscode-web-manager-workspaces/demo/` on the host.
-
-To stop: `Ctrl-C`, then `docker compose -f docker-compose.hub.yml down` to remove the containers.
-
-To fetch a fresh `latest` later: `docker compose -f docker-compose.hub.yml pull && docker compose -f docker-compose.hub.yml up`.
-
-Want workspaces to survive reboot? Set `HOST_WORKSPACES_ROOT` to an absolute path of your choice before `up`:
+Workspaces default to `/tmp/vscode-web-manager-workspaces` (auto-created by Docker on first run; cleared on host reboot — ideal for a demo). To persist them across reboots, set `HOST_WORKSPACES_ROOT` before running the script:
 
 ```bash
-HOST_WORKSPACES_ROOT="$HOME/vscode-workspaces" docker compose -f docker-compose.hub.yml up
+HOST_WORKSPACES_ROOT="$HOME/vscode-workspaces" ./my-vscode-app.sh
 ```
+
+To fetch a fresh `latest` later: `docker compose -f docker-compose.hub.yml pull && ./my-vscode-app.sh`.
 
 ## Quickstart (build from source)
 
