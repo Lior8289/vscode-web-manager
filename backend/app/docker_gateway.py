@@ -12,9 +12,6 @@ class DockerGateway:
     def __init__(self) -> None:
         self.client = docker.from_env()
 
-    def ping(self) -> bool:
-        return self.client.ping()
-
     def docker_info(self) -> dict[str, Any]:
         return self.client.info()
 
