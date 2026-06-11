@@ -4,7 +4,9 @@ A small local service that spins up browser-accessible [OpenVSCode Server](https
 
 Submitted as the **Cymotive home assignment**.
 
-## Running the application
+## Quick start for reviewers (zero build)
+
+The fastest way to run the project: prebuilt multi-arch images are pulled from Docker Hub, so **nothing is compiled on your machine** — the repo is only needed for the compose file and the launcher script. (To build from source instead, see [Quickstart (build from source)](#quickstart-build-from-source).)
 
 ### Prerequisites
 
@@ -18,7 +20,21 @@ git clone https://github.com/Lior8289/vscode-web-manager.git
 cd vscode-web-manager
 ```
 
-### 2. Run the launcher script
+### 2. Choose where workspaces live — recommended
+
+Without configuration, workspace folders are created under `/tmp/vscode-web-manager-workspaces` (auto-created on first use; cleared on host reboot — fine for a one-off demo). **Recommended:** point `HOST_WORKSPACES_ROOT` at a persistent folder so your test files survive reboots and are easy to find:
+
+```bash
+# macOS / Linux
+export HOST_WORKSPACES_ROOT="$HOME/vscode-workspaces"
+```
+
+```powershell
+# Windows (PowerShell)
+$env:HOST_WORKSPACES_ROOT = "$HOME\vscode-workspaces"
+```
+
+### 3. Run the launcher script
 
 **macOS / Linux:**
 
@@ -32,17 +48,30 @@ cd vscode-web-manager
 powershell -ExecutionPolicy Bypass -File .\my-vscode-app.ps1
 ```
 
-The script pulls the prebuilt multi-arch images from Docker Hub, brings up the full stack via `docker-compose.hub.yml`, polls `/health` until the backend is ready, and prints the dashboard URL.
+The script pulls the prebuilt images from Docker Hub, brings up the full stack via `docker-compose.hub.yml`, polls `/health` until the backend is ready, and prints the dashboard URL.
 
-### 3. Open the dashboard
-
-Open the URL the script prints — by default <http://localhost:8080>. From there click **New environment**, give it a folder name (e.g. `demo`), and click the resulting URL to open VS Code in a new tab. Files saved in `/home/workspace` inside VS Code persist to `/tmp/vscode-web-manager-workspaces/demo/` on the host.
-
-### 4. Stop the stack
+Prefer plain Compose? The script is equivalent to:
 
 ```bash
-docker compose -f docker-compose.hub.yml down
+docker compose -f docker-compose.hub.yml up
 ```
+
+### 4. Open the dashboard
+
+Open the URL the script prints — by default <http://localhost:8080>. From there click **New environment**, give it a folder name (e.g. `demo`), and click the resulting URL to open VS Code in a new tab. Files saved in `/home/workspace` inside VS Code persist to `<HOST_WORKSPACES_ROOT>/demo/` on the host — edit a file on either side and watch it appear on the other.
+
+### 5. Stop and clean up
+
+```bash
+# Stop the stack (backend + nginx)
+docker compose -f docker-compose.hub.yml down
+
+# Per-environment containers are managed by the API, not Compose.
+# Remove any that are left over:
+docker ps -aq --filter label=managed-by=vscode-web-env-manager | xargs -r docker rm -f
+```
+
+Workspace files on the host are never deleted by either command. To fetch a fresh `latest` later: `docker compose -f docker-compose.hub.yml pull` and re-run the script.
 
 ### API endpoints
 
@@ -60,23 +89,6 @@ All endpoints share the same origin as the dashboard. Replace `http://localhost:
 | `DELETE` | `/api/environments/{id}` | Force-remove an environment container. |
 
 For full request/response examples see [API reference](#api-reference).
-
-### Persistent workspaces (optional)
-
-Workspaces default to `/tmp/vscode-web-manager-workspaces` (auto-created on first run; cleared on host reboot — ideal for a demo). To persist them across reboots, set `HOST_WORKSPACES_ROOT` before running the script:
-
-```bash
-# macOS / Linux
-HOST_WORKSPACES_ROOT="$HOME/vscode-workspaces" ./my-vscode-app.sh
-```
-
-```powershell
-# Windows (PowerShell)
-$env:HOST_WORKSPACES_ROOT = "$HOME\vscode-workspaces"
-powershell -ExecutionPolicy Bypass -File .\my-vscode-app.ps1
-```
-
-To fetch a fresh `latest` later: `docker compose -f docker-compose.hub.yml pull` and re-run the script.
 
 ## Architecture
 
